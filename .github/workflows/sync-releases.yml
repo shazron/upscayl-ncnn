@@ -1,0 +1,55 @@
+name: Sync Release Assets
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Runs every midnight
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  check-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Latest Source Release
+        id: source_release
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          # Use gh api to guarantee a valid JSON response and avoid rate limits
+          TAG=$(gh api repos/upscayl/upscayl-ncnn/releases/latest --jq '.tag_name')
+          
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "Error: Could not fetch latest tag."
+            exit 1
+          fi
+          
+          echo "latest_tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Check if Release Exists in Fork
+        id: check_fork
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          # Use gh api to check if the release exists on your fork
+          if gh api repos/${{ github.repository }}/releases/tags/${{ steps.source_release.outputs.latest_tag }} >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Release ${{ steps.source_release.outputs.latest_tag }} already exists in fork. Skipping."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "New release found: ${{ steps.source_release.outputs.latest_tag }}"
+          fi
+
+      - name: Download and Re-upload Release
+        if: steps.check_fork.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          TAG="${{ steps.source_release.outputs.latest_tag }}"
+          
+          echo "Downloading assets from original repo..."
+          gh release download "$TAG" --repo upscayl/upscayl-ncnn --dir ./assets
+          
+          echo "Creating new release and uploading assets to fork..."
+          gh release create "$TAG" ./assets/* \
+            --repo ${{ github.repository }} \
+            --title "Release $TAG" \
+            --notes "Automated sync from upstream repository."
