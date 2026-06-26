@@ -1,0 +1,54 @@
+name: Sync Release Assets
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Runs once every midnight
+  workflow_dispatch: # Allows you to run it manually anytime
+
+jobs:
+  check-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Latest Source Release
+        id: source_release
+        run: |
+          # Fetch latest release tag from the original repository
+          TAG=$(curl -s https://github.com | jq -r '.tag_name')
+          echo "latest_tag=$TAG" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Check if Release Exists in Fork
+        id: check_fork
+        run: |
+          # Check if your fork already has this release tag
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://github.com{{ github.repository }}/releases/tags/${{ steps.source_release.outputs.latest_tag }})
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Release ${{ steps.source_release.outputs.latest_tag }} already exists in fork. Skipping."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "New release found: ${{ steps.source_release.outputs.latest_tag }}"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Install GitHub CLI
+        if: steps:check_fork.outputs.exists == 'false' && steps.source_release.outputs.latest_tag != 'null'
+        run: type -p gh >/dev/null || | sudo mkdir -p -m 755 /etc/apt/keyrings && wget -qO- https://github.com | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://github.com stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && sudo apt update && sudo apt install gh -y
+
+      - name: Download and Re-upload Release
+        if: steps.check_fork.outputs.exists == 'false' && steps.source_release.outputs.latest_tag != 'null'
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          TAG="${{ steps.source_release.outputs.latest_tag }}"
+          
+          echo "Downloading assets from original repo..."
+          gh release download "$TAG" --repo ORIGINAL_OWNER/ORIGINAL_REPO --dir ./assets
+          
+          echo "Creating new release and uploading assets to fork..."
+          gh release create "$TAG" ./assets/* \
+            --repo ${{ github.repository }} \
+            --title "Release $TAG" \
+            --notes "Automated sync from upstream repository."
