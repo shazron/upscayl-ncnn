@@ -34,7 +34,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.SYNC_TOKEN }}
 
       - name: Install GitHub CLI
-        if: steps:check_fork.outputs.exists == 'false' && steps.source_release.outputs.latest_tag != 'null'
+        if: steps.check_fork.outputs.exists == 'false' && steps.source_release.outputs.latest_tag != 'null'
         run: type -p gh >/dev/null || | sudo mkdir -p -m 755 /etc/apt/keyrings && wget -qO- https://github.com | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://github.com stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && sudo apt update && sudo apt install gh -y
 
       - name: Download and Re-upload Release
