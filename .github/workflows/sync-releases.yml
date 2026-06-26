@@ -46,7 +46,7 @@ jobs:
           TAG="${{ steps.source_release.outputs.latest_tag }}"
           
           echo "Downloading assets from original repo..."
-          gh release download "$TAG" --repo ORIGINAL_OWNER/ORIGINAL_REPO --dir ./assets
+          gh release download "$TAG" --repo upscayl/upscayl-ncnn --dir ./assets
           
           echo "Creating new release and uploading assets to fork..."
           gh release create "$TAG" ./assets/* \
